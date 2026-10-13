@@ -57,6 +57,32 @@ Erwartete Schlussausgabe (Beispiel):
 ==========================================================
 ```
 
+## Frigate anbinden (Pflicht für Kameras + Timelapse)
+
+Der Wrapper zeigt nur, was dein Frigate-Server liefert. Nach der Installation:
+
+```bash
+CT=100  # anpassen
+pct exec $CT -- bash -c "printf 'FRIGATE_URL=http://<FRIGATE-IP>:5000\nPORT=8080\n' > /etc/chismoso-server.env && systemctl restart chismoso-server && sleep 3"
+curl http://<LXC-IP>:8080/api/cameras   # listet alle Frigate-Kameras
+```
+
+Neue Kameras in Frigate erscheinen automatisch – nichts im Wrapper eintragen.
+
+## Timelapse per Web-UI
+
+`http://<LXC-IP>:8080/exports` – Formular: Kameras anhaken (kommen aus `/api/cameras`),
+Start/Ende wählen, Speed (25× Standard, 60×, 144×, 720×, 1440× = 1 Tag → 1 min, oder custom 2–3600×),
+Name vergeben, **Export starten**. Der Fortschritt wird live abgefragt
+(Frigate-Job-Status); fertige Videos liegen auf dem Frigate-Server (Download über die Frigate-UI → Export).
+
+REST-APIs dahinter: `POST /api/exports` (`{cameras[], start, end, speed, name}`,
+ISO-Zeit wie `2026-10-10T00:00`, Antwort 202 mit `export_id` je Kamera),
+`GET /api/export-jobs/{id}` (Status), `GET /api/exports` (Liste fertiger Exporte).
+Technik: Nutzt Frigates eigene Export-Engine (`POST /api/export/custom/...`, Timelapse via `setpts`);
+kein Chismoso-Binary nötig. Fehler (z. B. keine Aufnahmen im Zeitraum, volle Export-Queue)
+kommen mit Frigate-Meldung als 400/503 zurück.
+
 ## Reboot-Test (Reboot-sicher belegen)
 
 ```bash
