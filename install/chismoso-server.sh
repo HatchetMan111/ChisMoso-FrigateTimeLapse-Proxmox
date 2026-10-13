@@ -64,10 +64,27 @@ else
   echo "[INFO] CT-ID vorgegeben: $CT_ID"
 fi
 
-# ---------- Idempotenz: CT existiert -> nur App-Update ----------
+# ---------- Idempotenz: CT existiert -> App-Dateien auffrischen (kein Neubau) ----------
+# Hinweis: /opt/chismoso-server ist kein Git-Repo (Erstinstallation laedt per curl),
+# daher Dateien + Unit explizit neu laden statt git pull.
 if pct status "$CT_ID" >/dev/null 2>&1; then
   echo "[INFO] CT $CT_ID existiert bereits -> Update-Modus (kein Neubau)."
-  pct exec "$CT_ID" -- bash -c "cd /opt/chismoso-server 2>/dev/null && git pull --ff-only || true; .venv/bin/pip install -U -r app/requirements.txt; systemctl restart $APP; systemctl is-active $APP"
+  pct exec "$CT_ID" -- bash -c "set -euo pipefail
+    curl -fsSL '$REPO_RAW/app/main.py' -o /opt/chismoso-server/app/main.py
+    curl -fsSL '$REPO_RAW/app/requirements.txt' -o /opt/chismoso-server/app/requirements.txt
+    curl -fsSL '$REPO_RAW/systemd/chismoso-server.service' -o /etc/systemd/system/chismoso-server.service
+    /opt/chismoso-server/.venv/bin/pip install -U -r /opt/chismoso-server/app/requirements.txt
+    chown -R chismoso:chismoso /opt/chismoso-server
+    systemctl daemon-reload
+    systemctl restart $APP
+    sleep 3
+    systemctl is-active $APP
+    curl -fs http://localhost:$DEFAULT_PORT/health
+  " || {
+    echo "[ERR] Update-Verifikation fehlgeschlagen. Journal:" >&2
+    pct exec "$CT_ID" -- journalctl -u "$APP" -n 100 --no-pager >&2 || true
+    exit 1
+  }
   IP="$(pct exec "$CT_ID" -- bash -c "ip -4 -o addr show eth0 | awk '{print \$4}' | cut -d/ -f1" || true)"
   echo ""
   echo "================ INSTALLATION ERFOLGREICH (UPDATE) ================"
@@ -122,7 +139,6 @@ pct exec "$CT_ID" -- bash -c "set -euo pipefail
 "
 
 # Wrapper-Code + Unit aus diesem Repo holen (Fallback: nur Health-Skelett)
-pct push "$CT_ID" /dev/null /tmp/probe 2>/dev/null || true
 pct exec "$CT_ID" -- bash -c "set -euo pipefail
   cd /opt/chismoso-server
   if [[ ! -d app ]]; then mkdir -p app systemd; fi
