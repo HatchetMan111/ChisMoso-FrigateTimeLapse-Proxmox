@@ -23,6 +23,7 @@ CT_ID="${CT_ID:-}"
 CORES="${CORES:-$DEFAULT_CORES}"
 RAM="${RAM:-$DEFAULT_RAM}"
 DISK="${DISK:-$DEFAULT_DISK}"
+FRIGATE_URL_INPUT="${FRIGATE_URL:-}"
 DEBUG=0
 
 LOG="/tmp/chismoso-server-install-$(date +%F-%H%M%S).log"
@@ -30,7 +31,7 @@ exec > >(tee -a "$LOG") 2>&1
 trap 'echo "[ERR] Befehl: $BASH_COMMAND | Zeile: $LINENO | Exit: $? | Log: $LOG" >&2' ERR
 
 usage() {
-  echo "Usage: bash chismoso-server.sh [--ctid ID] [--cores N] [--memory MB] [--disk GB] [--bridge vmbr0] [--storage local-lvm] [--debug]"
+  echo "Usage: bash chismoso-server.sh [--ctid ID] [--cores N] [--memory MB] [--disk GB] [--bridge vmbr0] [--storage local-lvm] [--frigate-url URL] [--debug]"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -41,6 +42,7 @@ while [[ $# -gt 0 ]]; do
     --disk) DISK="$2"; shift 2 ;;
     --bridge) BRIDGE="$2"; shift 2 ;;
     --storage) STORAGE="$2"; shift 2 ;;
+    --frigate-url) FRIGATE_URL_INPUT="$2"; shift 2 ;;
     --debug) DEBUG=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unbekannte Option: $1" >&2; usage; exit 2 ;;
@@ -69,6 +71,10 @@ fi
 # daher Dateien + Unit explizit neu laden statt git pull.
 if pct status "$CT_ID" >/dev/null 2>&1; then
   echo "[INFO] CT $CT_ID existiert bereits -> Update-Modus (kein Neubau)."
+  if [[ -n "$FRIGATE_URL_INPUT" ]]; then
+    echo "[INFO] Setze FRIGATE_URL=$FRIGATE_URL_INPUT"
+    pct exec "$CT_ID" -- bash -c "printf 'FRIGATE_URL=%s\nPORT=$DEFAULT_PORT\n' '$FRIGATE_URL_INPUT' > /etc/chismoso-server.env"
+  fi
   pct exec "$CT_ID" -- bash -c "set -euo pipefail
     curl -fsSL '$REPO_RAW/app/main.py' -o /opt/chismoso-server/app/main.py
     curl -fsSL '$REPO_RAW/app/requirements.txt' -o /opt/chismoso-server/app/requirements.txt
@@ -96,6 +102,20 @@ if pct status "$CT_ID" >/dev/null 2>&1; then
   echo "=================================================================="
   exit 0
 fi
+
+# ---------- Frigate-Adresse (nur Neuinstallation, interaktiv abfragen) ----------
+if [[ -z "$FRIGATE_URL_INPUT" ]]; then
+  if [[ -t 0 ]]; then
+    read -rp "Frigate-Adresse [$FRIGATE_URL_DEFAULT]: " _FRIG_IN || true
+    FRIGATE_URL="${_FRIG_IN:-$FRIGATE_URL_DEFAULT}"
+  else
+    FRIGATE_URL="$FRIGATE_URL_DEFAULT"
+    echo "[INFO] Nicht interaktiv, nutze Default $FRIGATE_URL_DEFAULT (spaeter via --frigate-url aenderbar)."
+  fi
+else
+  FRIGATE_URL="$FRIGATE_URL_INPUT"
+fi
+echo "[INFO] FRIGATE_URL=$FRIGATE_URL"
 
 # ---------- Template sicherstellen ----------
 echo "[INFO] Suche debian-12-standard Template auf Storage $TEMPLATE_STORE ..."
@@ -168,8 +188,7 @@ UNIT
   python3 -m venv .venv
   .venv/bin/pip install -U pip
   .venv/bin/pip install -r app/requirements.txt
-  echo 'FRIGATE_URL=${FRIGATE_URL:-$FRIGATE_URL_DEFAULT}' > /etc/chismoso-server.env
-  echo 'PORT=$DEFAULT_PORT' >> /etc/chismoso-server.env
+  printf 'FRIGATE_URL=%s\nPORT=$DEFAULT_PORT\n' '$FRIGATE_URL' > /etc/chismoso-server.env
   chown -R chismoso:chismoso /opt/chismoso-server
   systemctl daemon-reload
   systemctl enable --now $APP

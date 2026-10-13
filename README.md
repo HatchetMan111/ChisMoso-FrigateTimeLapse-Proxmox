@@ -14,10 +14,16 @@ bash -c "$(wget -qLO - https://raw.githubusercontent.com/HatchetMan111/ChisMoso-
 Anpassungen per Umgebungsvariable oder Flag (ID immer **nächste freie**, außer gesetzt):
 
 ```bash
-CT_ID=150 CORES=2 RAM=2048 DISK=8 bash -c "$(wget -qLO - https://raw.githubusercontent.com/HatchetMan111/ChisMoso-FrigateTimeLapse-Proxmox/main/install/chismoso-server.sh)"
-bash chismoso-server.sh --ctid 150 --cores 2 --memory 2048 --disk 8 --bridge vmbr0 --storage local-lvm
+CT_ID=150 CORES=2 RAM=2048 DISK=8 FRIGATE_URL=http://192.168.178.50:5000 bash -c "$(wget -qLO - https://raw.githubusercontent.com/HatchetMan111/ChisMoso-FrigateTimeLapse-Proxmox/main/install/chismoso-server.sh)"
+bash chismoso-server.sh --ctid 150 --cores 2 --memory 2048 --disk 8 --bridge vmbr0 --storage local-lvm --frigate-url http://192.168.178.50:5000
 bash chismoso-server.sh --debug   # = bash -x, komplette Fehlermeldungskette + Log unter /tmp/chismoso-server-install-*.log
 ```
+
+> Bei Neuinstallation fragt das Script interaktiv nach der Frigate-Adresse
+> (`Frigate-Adresse [http://frigate:5000]:`), wenn weder `FRIGATE_URL` noch
+> `--frigate-url` gesetzt sind. Im Update-Modus (`--ctid` existiert) bleibt die
+> gespeicherte Adresse erhalten – nur mit explizitem `--frigate-url`/`FRIGATE_URL`
+> wird sie überschrieben.
 
 | Eigenschaft | Wert |
 |---|---|
